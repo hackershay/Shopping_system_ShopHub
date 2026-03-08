@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { CartProvider } from './context/CartContext';
 import { Header } from './components/Header';
 import { ProductCard } from './components/ProductCard';
@@ -7,47 +7,59 @@ import { Cart } from './components/Cart';
 import { Checkout } from './components/Checkout';
 import { supabase } from './lib/supabase';
 import type { Product } from './lib/database.types';
-import { Filter } from 'lucide-react';
+import { Filter, Search, AlertCircle } from 'lucide-react';
 
 function AppContent() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProducts();
   }, []);
 
-  useEffect(() => {
-    if (selectedCategory === 'all') {
-      setFilteredProducts(products);
-    } else {
-      setFilteredProducts(
-        products.filter((p) => p.category === selectedCategory)
-      );
-    }
-  }, [selectedCategory, products]);
 
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase
+      setError(null);
+      const { data, error: dbError } = await supabase
         .from('products')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (dbError) throw dbError;
       setProducts(data || []);
-      setFilteredProducts(data || []);
-    } catch (error) {
-      console.error('Error fetching products:', error);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load products';
+      setError(message);
+      console.error('Error fetching products:', err);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const filteredProducts = useMemo(() => {
+    let result = products;
+
+    if (selectedCategory !== 'all') {
+      result = result.filter((p) => p.category === selectedCategory);
+    }
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((p) =>
+        p.name.toLowerCase().includes(query) ||
+        p.description.toLowerCase().includes(query)
+      );
+    }
+
+    return result;
+  }, [products, selectedCategory, searchQuery]);
 
   const categories = [
     'all',
@@ -63,10 +75,28 @@ function AppContent() {
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
             Discover Amazing Products
           </h2>
-          <p className="text-gray-600">
+          <p className="text-gray-600 mb-4">
             Browse our curated collection of premium items
           </p>
+
+          <div className="relative mb-6">
+            <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search products by name or description..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+            />
+          </div>
         </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
 
         <div className="mb-8 flex items-center gap-4 overflow-x-auto pb-2">
           <Filter className="w-5 h-5 text-gray-500 flex-shrink-0" />

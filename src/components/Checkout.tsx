@@ -1,7 +1,14 @@
-import { X, CreditCard, CheckCircle } from 'lucide-react';
+import { X, CreditCard, CheckCircle, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { supabase } from '../lib/supabase';
+
+interface FormErrors {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+}
 
 interface CheckoutProps {
   isOpen: boolean;
@@ -12,6 +19,8 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
   const { cart, getCartTotal, clearCart } = useCart();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FormErrors>({});
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -19,8 +28,45 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
     address: '',
   });
 
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = 'Full name is required';
+    } else if (formData.name.trim().length < 2) {
+      newErrors.name = 'Name must be at least 2 characters';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    } else if (!/^[\d\s\-\+\(\)]+$/.test(formData.phone) || formData.phone.replace(/\D/g, '').length < 10) {
+      newErrors.phone = 'Please enter a valid phone number';
+    }
+
+    if (!formData.address.trim()) {
+      newErrors.address = 'Shipping address is required';
+    } else if (formData.address.trim().length < 10) {
+      newErrors.address = 'Please enter a complete address';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    if (!validateForm()) {
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -35,9 +81,10 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
           status: 'pending',
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (orderError) throw orderError;
+      if (!order) throw new Error('Failed to create order');
 
       const orderItems = cart.map((item) => ({
         order_id: order.id,
@@ -60,9 +107,10 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
         onClose();
         setFormData({ name: '', email: '', phone: '', address: '' });
       }, 3000);
-    } catch (error) {
-      console.error('Error creating order:', error);
-      alert('Failed to place order. Please try again.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to place order. Please try again.';
+      setError(message);
+      console.error('Error creating order:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -120,69 +168,104 @@ export function Checkout({ isOpen, onClose }: CheckoutProps) {
               </div>
             </div>
 
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                <p className="text-red-700 text-sm">{error}</p>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Full Name
+                  Full Name *
                 </label>
                 <input
                   type="text"
-                  required
                   value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value });
+                    if (errors.name) {
+                      setErrors({ ...errors, name: undefined });
+                    }
+                  }}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all ${
+                    errors.name ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                   placeholder="John Doe"
                 />
+                {errors.name && (
+                  <p className="text-red-600 text-sm mt-1">{errors.name}</p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
+                  Email Address *
                 </label>
                 <input
                   type="email"
-                  required
                   value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  onChange={(e) => {
+                    setFormData({ ...formData, email: e.target.value });
+                    if (errors.email) {
+                      setErrors({ ...errors, email: undefined });
+                    }
+                  }}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all ${
+                    errors.email ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                   placeholder="john@example.com"
                 />
+                {errors.email && (
+                  <p className="text-red-600 text-sm mt-1">{errors.email}</p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
+                  Phone Number *
                 </label>
                 <input
                   type="tel"
-                  required
                   value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  onChange={(e) => {
+                    setFormData({ ...formData, phone: e.target.value });
+                    if (errors.phone) {
+                      setErrors({ ...errors, phone: undefined });
+                    }
+                  }}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all ${
+                    errors.phone ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                   placeholder="+1 (555) 000-0000"
                 />
+                {errors.phone && (
+                  <p className="text-red-600 text-sm mt-1">{errors.phone}</p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Shipping Address
+                  Shipping Address *
                 </label>
                 <textarea
-                  required
                   value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, address: e.target.value });
+                    if (errors.address) {
+                      setErrors({ ...errors, address: undefined });
+                    }
+                  }}
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none transition-all ${
+                    errors.address ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                   placeholder="123 Main St, City, State, ZIP"
                 />
+                {errors.address && (
+                  <p className="text-red-600 text-sm mt-1">{errors.address}</p>
+                )}
               </div>
 
               <button
